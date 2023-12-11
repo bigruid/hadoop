@@ -26,11 +26,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -68,15 +64,15 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 class LocalDistributedCacheManager {
   public static final Log LOG =
     LogFactory.getLog(LocalDistributedCacheManager.class);
-  
+
   private List<String> localArchives = new ArrayList<String>();
   private List<String> localFiles = new ArrayList<String>();
   private List<String> localClasspaths = new ArrayList<String>();
-  
+
   private List<File> symlinksCreated = new ArrayList<File>();
-  
+
   private boolean setupCalled = false;
-  
+
   /**
    * Set up the distributed cache by localizing the resources, and updating
    * the configuration with references to the localized resources.
@@ -85,16 +81,13 @@ class LocalDistributedCacheManager {
    */
   public void setup(JobConf conf) throws IOException {
     File workDir = new File(System.getProperty("user.dir"));
-    
+
     // Generate YARN local resources objects corresponding to the distributed
     // cache configuration
-    Map<String, LocalResource> localResources = 
+    Map<String, LocalResource> localResources =
       new LinkedHashMap<String, LocalResource>();
     MRApps.setupDistributedCache(conf, localResources);
-    // Generating unique numbers for FSDownload.
-    AtomicLong uniqueNumberGenerator =
-        new AtomicLong(System.currentTimeMillis());
-    
+
     // Find which resources are to be put on the local classpath
     Map<String, Path> classpaths = new HashMap<String, Path>();
     Path[] archiveClassPaths = DistributedCache.getArchiveClassPaths(conf);
@@ -109,13 +102,13 @@ class LocalDistributedCacheManager {
         classpaths.put(p.toUri().getPath().toString(), p);
       }
     }
-    
+
     // Localize the resources
     LocalDirAllocator localDirAllocator =
       new LocalDirAllocator(MRConfig.LOCAL_DIR);
     FileContext localFSFileContext = FileContext.getLocalFSFileContext();
     UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
-    
+
     ExecutorService exec = null;
     try {
       ThreadFactory tf = new ThreadFactoryBuilder()
@@ -127,7 +120,7 @@ class LocalDistributedCacheManager {
       for (LocalResource resource : localResources.values()) {
         Callable<Path> download =
             new FSDownload(localFSFileContext, ugi, conf, new Path(destPath,
-                Long.toString(uniqueNumberGenerator.incrementAndGet())),
+                    UUID.randomUUID().toString()),
                 resource);
         Future<Path> future = exec.submit(download);
         resourcesToPaths.put(resource, future);
@@ -146,7 +139,7 @@ class LocalDistributedCacheManager {
         String link = entry.getKey();
         String target = new File(path.toUri()).getPath();
         symlink(workDir, target, link);
-        
+
         if (resource.getType() == LocalResourceType.ARCHIVE) {
           localArchives.add(pathString);
         } else if (resource.getType() == LocalResourceType.FILE) {
@@ -172,7 +165,7 @@ class LocalDistributedCacheManager {
       if (exec != null) {
         exec.shutdown();
       }
-    }    
+    }
     // Update the configuration object with localized data.
     if (!localArchives.isEmpty()) {
       conf.set(MRJobConfig.CACHE_LOCALARCHIVES, StringUtils
@@ -186,7 +179,7 @@ class LocalDistributedCacheManager {
     }
     setupCalled = true;
   }
-  
+
   /**
    * Utility method for creating a symlink and warning on errors.
    *
@@ -208,11 +201,11 @@ class LocalDistributedCacheManager {
       }
     }
   }
-  
-  /** 
-   * Are the resources that should be added to the classpath? 
+
+  /**
+   * Are the resources that should be added to the classpath?
    * Should be called after setup().
-   * 
+   *
    */
   public boolean hasLocalClasspaths() {
     if (!setupCalled) {
@@ -221,7 +214,7 @@ class LocalDistributedCacheManager {
     }
     return !localClasspaths.isEmpty();
   }
-  
+
   /**
    * Creates a class loader that includes the designated
    * files and archives.
